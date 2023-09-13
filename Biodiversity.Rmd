@@ -1,0 +1,247 @@
+---
+title: "Biodiversity in National Parks in the United States of America"
+author: Exploratory Data Analysis by Sangeetha Ramanuj and Shea O'Day
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Questions
+
+“Biodiversity” is the foundation of life on Earth. Though the estimated 8.7 million species on Earth may seem to dismiss the importance of one species’ existence, each species is an integrated and significant part of their ecosystems. The National Geographic Society [2] defines conservation as “the care and protection of these ‘natural’ resources so that they can persist for future generations,” including “maintaining diversity of species, genes, and ecosystems, as well as functions of the environment.” As stated in the above definition, a major goal of conservation is to allow resources to persist for the future. The key is maintaining sustainable habitats for the preservation of these species.
+
+In this paper, we explore the records of species throughout US National Parks to illustrate the biodiversity and ecosystem threats of national parks in the United States. We ask:
+
+1. Does location and park size impact the biodiversity and number of species threatened in national parks?
+
+2. How do different types of species make up the biodiversity of the national parks? Which national parks have the largest numbers of species with a conservation status?
+
+To illustrate this, we look at recorded species counts in 56 of the United States national parks, and analyze the types of species that make up the parks.
+
+
+## Methods
+
+We first identify the unit of analysis of this project, **(national parks)**, which is an independent variable. The metric of biodiversity for each national park is the **total species count** in it. Other dependent variables are park location (latitude, longitude) and type of species (birds, mammals, etc.). The other metric of interest is the **count of species with a conservation status**, i.e. the nature of threat to that species. The analytic data set contains 56 unique observations each representing a national park and 33 variables. Variables document its location, size, count of total species and specific species (mammals, amphibians, etc.), count of species with a conservation status and its specifics (count endangered species, in recovery, threatened, etc.). This was obtained from two independent data sets on parks `parks.csv` and species present in each park `species.csv` provided by the National Parks Service [1]. The species data set (containing 119,248 observations) was aggregated by park and category of species, and joined with the parks data set (containing geo-spatial attributes of 56 parks in USA) to obtain all relevant variables for the analysis. We cleansed data to eliminate observations with N/A values, and conducted full joins to ensure that no parks were dropped from either of the data sets.
+
+
+```{r, echo = FALSE, message=FALSE} 
+# Loading packages
+library(tidyverse) # Data wrangling and visualization
+library(readr) # Reads in data sets that we are working with
+```
+
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+# Reading in our data sets 
+species <- read_csv("species.csv")
+parks <- read_csv("parks.csv")
+```
+
+
+```{r, echo = FALSE} 
+# Data Wrangling
+#1. Aggregating species data to the park level since it has over 100,000 rows
+
+# Creating data set with a "Total Species" column
+national_park_species = species%>%
+  count(`Park Name`)
+
+colnames(national_park_species)[2] = "Total Species"
+
+# Long --> wide dataset of count of types of species in each park
+national_park_specific_species = species%>%
+  group_by(`Park Name`) %>%
+  count(Category)
+  
+national_park_specific_species = national_park_specific_species%>%
+  pivot_wider(names_from = Category, values_from = n)
+
+# Joined data set of "Total Species" and specific species columns
+park_species = full_join(national_park_species, national_park_specific_species, by = join_by("Park Name"))
+
+# 2. Creating second data set
+
+# Creating data set with a "Total Conservation Status" column
+national_park_conservation = species %>%
+  filter(!is.na(`Conservation Status`)) %>%
+  count(`Park Name`)
+
+colnames(national_park_conservation)[2] = "Total Conservation Status"
+
+# Long --> wide data set of count of types of "Conservation Status" in each park
+national_park_specific_conservation = species%>%
+  filter(!is.na(`Conservation Status`)) %>%
+  group_by(`Park Name`) %>%
+  count(`Conservation Status`)
+  
+national_park_specific_conservation = national_park_specific_conservation%>%
+  pivot_wider(names_from = "Conservation Status", values_from = n)
+
+# Joined data set of "Conservation" and specific species columns
+park_conservation = full_join(national_park_conservation, national_park_specific_conservation, by = join_by("Park Name"))
+
+#3. Joining the two data sets above with `parks.csv` to create the working data set
+
+# Using left join to join all three data sets based on national park names in parks.csv
+working_dataset = left_join(parks, park_species, join_by("Park Name"))%>%
+  left_join(park_conservation, join_by("Park Name"))
+
+# Replacing N/A values with 0s
+working_dataset[is.na(working_dataset)] <- 0
+```
+
+
+```{r, echo = FALSE}
+# Summary Statistics (found in image - Table 1)
+
+# Finding mean value 
+summary_table <- working_dataset %>% summarize_at(c('Total Species', 'Mammal', 'Bird', 'Reptile', 'Amphibian', 'Fish', 'Vascular Plant', 'Fungi', 'Insect', 'Latitude', 'Longitude', 'Acres', 'Total Conservation Status', 'Endangered', 'In Recovery', 'Species of Concern', 'Threatened'), mean)
+
+# This function appends a row of the specified summary statistic to our final summary table
+add_stat <- function(summary_table, stat) {
+  
+  summary_stat = working_dataset %>% summarize_at(c('Total Species', 'Mammal', 'Bird', 'Reptile', 'Amphibian', 'Fish', 'Vascular Plant', 'Fungi', 'Insect', 'Latitude', 'Longitude', 'Acres', 'Total Conservation Status', 'Endangered', 'In Recovery', 'Species of Concern', 'Threatened'), stat)
+  
+  summary_table[nrow(summary_table) + 1,] = summary_stat
+  return(summary_table)
+  
+}
+
+# Add the remaining statistics like median, standard deviation, IQR, maximum, and minimum
+summary_table <- summary_table %>% 
+  add_stat(median) %>% 
+  add_stat(sd) %>%
+  add_stat(IQR) %>%
+  add_stat(max) %>%
+  add_stat(min)
+
+Criteria <- c("mean", "median", "standard_dev", "iqr", "maximum", "minimum")
+
+summary_table_flip <- cbind(Criteria, summary_table) 
+
+# We transpose the table to make it more legible
+summary_table_final <- as.data.frame(t(summary_table_flip))
+```
+
+
+## Findings 
+
+```{r, echo = FALSE, warning=FALSE, out.width = '100%', fig.align= 'center', fig.cap = 'Table 1'}
+# Importing Table 1 as a png file into R
+knitr::include_graphics('Summary Table.png')
+```
+
+In **Table 1**, the first row shows statistics across categories of species, followed by statistics by category, location (longitude, latitude), park area (acres) and conservation status (endangered, in-recovery, etc.). The mean total species count per park is around 2130, while the range is 5775, with a high standard deviation of 1203, indicating a vast biodiversity spread across parks. The IQR for vascular plants, insects, and fungi are also high, indicating that the central portion of the recorded data is spread out. The average number of species with a conservation status is relatively low (about 84) compared to the number of species, but goes up to 247 (maximum) in a park. The average number of endangered (<7) and threatened (<4) species are relatively low compared to the number of species per park, but go up to a high of 44 and 16, respectively.
+
+
+```{r, echo = FALSE, warning=FALSE}
+#Relation of biodiversity with park size (in acres)
+
+acres <- working_dataset$Acres/100000 # Scaling the acres value down 
+
+ggplot(data = working_dataset) +
+  geom_col(mapping = aes(x = acres, y = `Total Species`), color = "black", fill = "#94C973", width = 0.8) +
+  labs(title = "Figure 1: Total Species vs Park Size", x = "Acres in 100,000s")
+```
+
+
+```{r, echo = FALSE}
+# Relation of biodiversity with park location in the United States
+
+var <- working_dataset$`Total Species`
+
+ggplot(working_dataset) +
+  geom_point(mapping = aes(`Longitude`, `Latitude`), size = var/1000, alpha = 0.8, color = "#91B500") +   # Scaling the 'var' down because it is too big for dots
+  labs(title = "Figure 2: Location and biodiversity of US National parks") 
+```
+
+
+The biodiversity in relation to park size and location is described in **Figure 1** and **Figure 2**, respectively. From **Figure 1**, we see that the relatively smaller parks (< 500,000 acres) are the most bio-diverse with up to 6500 species, while there are very large parks (7.5-8.5 million acres) with low biodiversity (< 1900 species). The most bio-diverse parks are distributed in the middle-to-eastern part of USA (see **Figure 2**). It is clear from these, that park location does have an impact on bio-diversity, more than park size. Small sized parks located in places with favorable conditions tend to be more bio-diverse, while parks in places with extreme conditions (Alaska) tend to be less bio-diverse. One exception to this is Death Valley, which has extreme conditions, but yet one of the most bio-diverse.
+
+
+```{r, echo = FALSE}
+# Taking our top 5 most bio-diverse national parks
+top_5_parks <- working_dataset %>% 
+  arrange(desc(`Total Species`)) %>% 
+  slice(1:5)
+
+# Pivoting top_5_parks from wide data to long data and selecting only the few columns we want to look at
+top_5_parks = top_5_parks %>%
+   pivot_longer(cols = c(Mammal, Bird, Reptile, Amphibian, Fish, `Vascular Plant`, Fungi, Insect), names_to = "Organism Type", values_to = "Count") %>% 
+  select(c("Park Name", "Organism Type", "Count"))
+
+# Stacked bar plot for organism distribution in the top 5 national parks
+ggplot(data = top_5_parks) +
+  geom_col(mapping = aes(x =Count, y = `Park Name`, fill = `Organism Type`)) +
+  labs(title = "Figure 3: Bio-diversity of top 5")
+```
+
+
+Looking at the top 5 most bio-diverse parks in **Figure 3**, Redwood's species are more evenly distributed, although Great Smoky Mountains has the most species (mostly vascular plants and insects). Furthermore, in **Figure 4**, the parks with greater numbers of species with a conservation status tend to be in the Southwest region of USA. The Great Smoky Mountains – the most bio-diverse park – has around 100-150 species with a conservation status, whereas Death Valley – the 5th most bio-diverse park – has around 200-250. Death Valley has the most species with some degree of threat. Endangered species exist in each park, however, Death Valley and Redwood have the most. Each of these parks has a small number of species in-recovery, with Redwood having a noticeable count (see **Figure 5**). Moreover, in **Figure 6**, amongst the least bio-diverse parks, Petrified Forest and Dry Tortugas have the most number of endangered species, with very few species in recovery. 
+
+
+```{r, echo = FALSE}
+# Relation between location, biodiversity, and species with a conservation status*
+var = working_dataset$`Total Species`
+var2 = working_dataset$`Total Conservation Status`
+
+ggplot(working_dataset) +
+  geom_point(mapping = aes(`Longitude`, `Latitude`, color = var2), size = var/1000, alpha = 0.8) + #scaling the 'var' down because it is too big for dots
+  labs(title = "Figure 4: Location and Conservation Statuses of US National Parks",
+       color = "Conservation")
+```
+
+
+```{r, echo = FALSE}
+# Stacked bar plot of most bio-diverse national parks vs total species stacked with species count with a conservation status 
+
+top_5_parks_conservation <- working_dataset %>% 
+  arrange(desc(`Total Species`)) %>% 
+  slice(1:5) %>% 
+  pivot_longer(cols = c(Endangered, `In Recovery`, `Species of Concern`, Threatened), names_to = "Conservation Type", values_to = "Count") %>% 
+  select(c("Park Name", "Total Conservation Status", "Conservation Type", "Count"))
+
+# Stacked bar plot
+ggplot(data = top_5_parks_conservation) +
+  geom_col(mapping = aes(x = Count, y = `Park Name`, fill = `Conservation Type`)) +
+  labs(title = "Figure 5: Conservation statuses of top 5")
+```
+
+
+```{r, echo = FALSE}
+# Stacked bar plot of least biodiverse national parks vs total species stacked with species count with a conservation status
+
+bottom_5_parks_conservation <- working_dataset %>% 
+  arrange(`Total Species`) %>% 
+  slice(1:5) %>% 
+  pivot_longer(cols = c(Endangered, `In Recovery`, `Species of Concern`, Threatened), names_to = "Conservation Type", values_to = "Count") %>% 
+  select(c("Park Name", "Total Conservation Status", "Conservation Type", "Count"))
+
+ggplot(data = bottom_5_parks_conservation) +
+  geom_col(mapping = aes(x = Count, y = `Park Name`, fill = `Conservation Type`)) +
+  labs(title = "Figure 6: Conservation Statuses of bottom 5")
+```
+
+
+Discrepancies in data collection may have resulted in significant data gaps, yet it is beyond the scope of our project to confirm or deny validity of the data set. It is important to understand whether the total species count is actually the best metric for biodiversity. To pursue this further, we would study metrics of biodiversity with statistical analysis. We may be able to find correlations between biodiversity or threat with other park attributes. In doing so, good regression models could be built to predict whether a species type could be threatened based on the park in which it resides and its various attributes.
+
+## References
+
+1. National Park Service. (2017). Biodiversity in National Parks. Available from   
+      https://www.kaggle.com/datasets/nationalparkservice/park-biodiversity.
+    
+2. National Geographic Society.(2023) Biodiversity. Available from 
+      https://education.nationalgeographic.org/resource/biodiversity/.
+
+
+
+
+
+ 
+
+
+
+
